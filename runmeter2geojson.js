@@ -1,23 +1,30 @@
-var sqlite3 = require('sqlite3').verbose();
-var db = new sqlite3.Database('Meter.db');
-var fs = require('fs');
-var path = require('path');
+var sqlite3 = require('sqlite3').verbose(),
+    fs = require('fs'),
+    path = require('path'),
+    input = process.argv[2],
+    output = path.resolve(__dirname, process.argv[3]),
+    db = new sqlite3.Database(input);
+
 var geojson = { type: "FeatureCollection", features: [] };
 
 function getRunCoordinates(run, callback) {
-  var coordinates = [];
+  var coordinates = [],
+      times = [],
+      startTime = new Date(run.startTime);
 
-  db.each('select latitude, longitude from coordinate where runID = ?', { 1: run.runID }, function(err, row) {
+  db.each('select latitude, longitude, timeOffset from coordinate where runID = ?', { 1: run.runID }, function(err, row) {
     coordinates.push([row.longitude, row.latitude]);
+    var coordTime = new Date(startTime.getTime() + row.timeOffset*1000);
+    times.push(coordTime);
   }, function() {
-    callback(run, coordinates);
+    callback(run, coordinates, times);
   });
 }
 
 function parseRuns(rows, doneParsingCallback) {
   var i = 0;
 
-  function createRun(run, coordinates) {
+  function createRun(run, coordinates, times) {
     var feature = {
       type: 'Feature',
       properties: {
@@ -28,10 +35,11 @@ function parseRuns(rows, doneParsingCallback) {
         ascent: Math.floor(run.ascent),
         descent: Math.floor(run.descent),
         calories: Math.floor(run.calories),
-        locality: run.locality
+        locality: run.locality,
+        times: times
       }
     }
-    console.log(feature)
+
     if (!coordinates || coordinates.length < 2) {
       feature.geometry = null;
     } else {
@@ -53,10 +61,10 @@ function parseRuns(rows, doneParsingCallback) {
   getRunCoordinates(rows[i], createRun);
 }
 
-function writeToFile() {
-  fs.writeFileSync(path.join(__dirname, 'runs.geojson'), JSON.stringify(geojson));
-}
+var sql = "select runID, startTime, runTime, distance, ascent, descent, calories, locality from run";
 
-db.all("select runID, startTime, runTime, distance, ascent, descent, calories, locality from run", [], function(err, rows) {
-  parseRuns(rows, writeToFile);
+db.all(sql, [], function(err, rows) {
+  parseRuns(rows, function() {
+    fs.writeFileSync(output, JSON.stringify(geojson));
+  });
 });

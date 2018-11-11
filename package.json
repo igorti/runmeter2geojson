@@ -19,6 +19,7 @@
     "runmeter"
   ],
   "dependencies": {
-    "sqlite3": "*"
+    "sqlite3": "*",
+    "togpx": "^0.5.4"
   }
 }
